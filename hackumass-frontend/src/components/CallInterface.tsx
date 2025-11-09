@@ -14,12 +14,14 @@ export default function CallInterface({ onEndCall }: CallInterfaceProps) {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("http://127.0.0.1:5000/get_latest_response");
+        const res = await fetch("http://127.0.0.1:5001/get_latest_response");
+        if (!res.ok) throw new Error("Failed to fetch latest response");
         const data = await res.json();
 
         if (data.last_response) {
           setResponse(data.last_response);
           setIsAISpeaking(true);
+          // Reset speaking state after a short delay
           setTimeout(() => setIsAISpeaking(false), 2000);
         }
 
@@ -27,7 +29,7 @@ export default function CallInterface({ onEndCall }: CallInterfaceProps) {
           setUserLocation(data.location_info);
         }
       } catch (err) {
-        console.error("Polling failed", err);
+        console.error("Polling failed:", err);
       }
     }, 2500);
 
@@ -36,13 +38,18 @@ export default function CallInterface({ onEndCall }: CallInterfaceProps) {
 
   // --- Handle call end ---
   const handleEnd = async () => {
-    await fetch("http://127.0.0.1:5000/stop_listening", { method: "POST" });
+    try {
+      await fetch("http://127.0.0.1:5001/stop_listening", { method: "POST" });
+    } catch (err) {
+      console.error("Error stopping listening:", err);
+    }
     onEndCall();
   };
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-y-auto">
       <div className="flex-1 flex flex-col items-center justify-start pt-20 pb-8 px-6 space-y-10">
+        {/* Sound wave */}
         <SoundWave isActive={isAISpeaking} />
 
         {/* AI Response */}
@@ -57,9 +64,10 @@ export default function CallInterface({ onEndCall }: CallInterfaceProps) {
           <p className="text-gray-300 text-lg">{userLocation}</p>
         </div>
 
+        {/* End Call Button */}
         <button
           onClick={handleEnd}
-          className="mt-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-12 rounded-full text-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/50"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-12 rounded-full text-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/50"
         >
           End Call
         </button>

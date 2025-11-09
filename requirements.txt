@@ -1,0 +1,22 @@
+# Project runtime dependencies
+google-generative-ai
+SpeechRecognition
+sounddevice
+numpy
+webrtcvad
+faster-whisper
+pydub
+python-dotenv
+requests
+beautifulsoup4
+
+# Optional (recommended) - add for multilingual support (language detection + translation)
+# Install only if you want automatic translation of user input/responses.
+# NOTE: this project no longer uses `googletrans` for translation — Gemini or
+# ElevenLabs STT should be used instead. Remove googletrans to avoid confusion.
+
+# Notes:
+# - faster-whisper requires a working FFmpeg on the system (install via brew/apt).
+# - On macOS, you may need to install portaudio before installing sounddevice:
+#     brew install portaudio
+#   then: pip install sounddevice

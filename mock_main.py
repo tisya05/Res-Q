@@ -1,14 +1,28 @@
 from dotenv import load_dotenv
-import os
-import glob
-import speech_recognition as sr
-import threading
-import time
-import re
-from pydub import AudioSegment
-from pydub.playback import _play_with_simpleaudio
+import os, glob, threading, time, re, shutil, subprocess, requests
+
+try:
+    import speech_recognition as sr
+except ImportError:
+    sr = None
+
+try:
+    from pydub import AudioSegment
+    from pydub.playback import _play_with_simpleaudio
+    pydub_available = True
+except Exception:
+    AudioSegment = None
+    _play_with_simpleaudio = None
+    pydub_available = False
+
 from ip_utils import start_ip_check
-from context_manager import process_user_message, clear_session
+from context_manager import process_user_message, clear_session, memory
+
+try:
+    from googletrans import Translator
+    _gtrans = Translator()
+except Exception:
+    _gtrans = None
 
 # --- Load environment variables ---
 load_dotenv()
@@ -24,133 +38,181 @@ def set_callback(callback_fn):
 
 # --- API Keys ---
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
+ELEVEN_VOICE_ID_EN = os.getenv("ELEVEN_VOICE_ID_EN") or "Z3R5wn05IrDiVCyEkUrK"
+ELEVEN_VOICE_ID_HI = os.getenv("ELEVEN_VOICE_ID_HI") or "mfMM3ijQgz8QtMeKifko"
+ELEVEN_VOICE_ID_SP = os.getenv("ELEVEN_VOICE_ID_SP") or "2VUqK4PEdMj16L6xTN4J"
 
-# --- Initialize recognizer ---
-recognizer = sr.Recognizer()
-
-# --- Global flags ---
-stop_audio_flag = False
+recognizer = sr.Recognizer() if sr else None
 audio_thread = None
-listening = True
+audio_lock = threading.Lock()
+mute_until = 0
 
 
-# --- Clean up old audio files ---
+# --- Cleanup ---
 def cleanup_audio_files():
-    files = glob.glob("chunk_*.mp3")
-    for f in files:
+    for f in glob.glob("chunk_*.mp3"):
         try:
             os.remove(f)
         except Exception as e:
-            print(f"Failed to delete {f}: {e}")
+            print(f"[cleanup] Failed to delete {f}: {e}")
 
+# --- ElevenLabs TTS ---
+def elevenlabs_tts(text, lang="en", filename="output.mp3"):
+    if not ELEVEN_API_KEY:
+        print("[TTS] ELEVEN_API_KEY not set — skipping TTS.")
+        return None
 
-# --- Mock ElevenLabs TTS (for testing) ---
-def elevenlabs_tts(text, filename="output.mp3"):
-    """
-    Instead of calling the real ElevenLabs API, generate a short beep tone for testing.
-    """
-    from pydub.generators import Sine
-    tone = Sine(440).to_audio_segment(duration=500)
-    tone.export(filename, format="mp3")
-    print(f"[MOCK TTS] Generated audio for: {text[:50]}...")
-    return filename
+    # Choose voice by language
+    if lang.startswith("hi"):
+        voice_id = ELEVEN_VOICE_ID_HI
+    elif lang.startswith("es"):
+        voice_id = ELEVEN_VOICE_ID_SP
+    else:
+        voice_id = ELEVEN_VOICE_ID_EN
 
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    headers = {"xi-api-key": ELEVEN_API_KEY, "Content-Type": "application/json"}
+    payload = {"text": text, "voice_settings": {"stability": 0.55, "similarity_boost": 0.75}}
 
-# --- Play audio interruptibly ---
-def play_audio_interruptible(file_path):
-    global stop_audio_flag
-    sound = AudioSegment.from_file(file_path)
-    play_obj = _play_with_simpleaudio(sound)
-
-    while play_obj.is_playing():
-        if stop_audio_flag:
-            play_obj.stop()
-            break
-        time.sleep(0.05)
-
-
-# --- Speak Gemini response and notify frontend ---
-def speak_text_interruptible(prompt):
-    """Generate AI response, notify frontend, and speak it."""
-    cleanup_audio_files()  # remove old audio
-    text = process_user_message(prompt)
-
-    # Notify the Flask backend (frontend pulls this)
-    if ai_callback:
-        try:
-            ai_callback(text)
-        except Exception as e:
-            print(f"[Callback Error] {e}")
-
-    # Show context (debug)
     try:
-        from context_manager import show_current_context
-        show_current_context()
-    except ImportError:
-        print("[DEBUG] show_current_context not available")
+        resp = requests.post(url, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        with open(filename, "wb") as f:
+            f.write(resp.content)
+        print(f"[TTS] Synthesized ({lang}) audio for: {text[:50]}...")
+        return filename
+    except Exception as e:
+        print("[TTS] ElevenLabs request failed:", e)
+        return None
 
-    # Speak the AI's response in chunks
-    chunks = re.split(r'(?<=[.?!])\s+', text)
-    global stop_audio_flag
-    stop_audio_flag = False
+# --- Play audio ---
+def play_audio_interruptible(file_path):
+    if not file_path or not os.path.exists(file_path):
+        print("[play] Audio file missing:", file_path)
+        return 0.0
 
-    for i, chunk in enumerate(chunks):
-        if not chunk.strip():
-            continue
-        if stop_audio_flag:
-            break
-        audio_file = elevenlabs_tts(chunk, filename=f"chunk_{i}.mp3")
-        play_audio_interruptible(audio_file)
+    if pydub_available and AudioSegment and _play_with_simpleaudio:
+        sound = AudioSegment.from_file(file_path)
+        duration = sound.duration_seconds
+        play_obj = _play_with_simpleaudio(sound)
+        while play_obj.is_playing():
+            time.sleep(0.05)
+        return duration
 
+    player = shutil.which("afplay")
+    if player:
+        try:
+            start = time.time()
+            subprocess.run([player, file_path])
+            return time.time() - start
+        except Exception as e:
+            print("[play] afplay failed:", e)
+            return 0.0
 
-# --- Continuous voice recognition loop ---
+    print("[play] No audio playback available.")
+    return 0.0
+
+# --- Emergency-safe ---
+def enforce_safety_response(text):
+    if memory.get("emergency_type"):
+        first_sentence = re.split(r"[.?!]", text)[0]
+        return first_sentence.strip() + "."
+    return text
+
+# --- Speak (thread-safe) ---
+def speak_text_interruptible(prompt, detected_lang="en"):
+    global mute_until
+    with audio_lock:
+        cleanup_audio_files()
+        text = process_user_message(prompt, detected_lang)
+        text = enforce_safety_response(text)
+
+        chunks = re.split(r"(?<=[.?!])\s+", text)
+        for i, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+            audio_file = elevenlabs_tts(chunk, lang=detected_lang, filename=f"chunk_{i}.mp3")
+            if not audio_file:
+                continue
+
+            duration = 0
+            if pydub_available and AudioSegment:
+                try:
+                    seg = AudioSegment.from_file(audio_file)
+                    duration = seg.duration_seconds
+                except Exception:
+                    pass
+            duration = duration or max(0.5, len(chunk.split()) * 0.42)
+            mute_until = time.time() + duration + 0.35
+            play_audio_interruptible(audio_file)
+
+        mute_until = max(mute_until, time.time() + 0.25)
+
+# --- Listening loop ---
 def listen_loop():
-    global listening, stop_audio_flag, audio_thread
-    with sr.Microphone() as source:
-        recognizer.adjust_for_ambient_noise(source)
-        print("🎙 Listening continuously. Speak and pause to trigger AI response...")
-
-        while listening:
+    global audio_thread
+    if not recognizer:
+        while True:
             try:
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)
-                user_input = recognizer.recognize_google(audio)
-
-                if user_input.strip():
-                    print(f"📝 You said: {user_input}")
-
-                    # Stop current playback
-                    stop_audio_flag = True
-                    if audio_thread and audio_thread.is_alive():
-                        audio_thread.join()
-
-                    # Start new AI response in a thread
-                    audio_thread = threading.Thread(
-                        target=speak_text_interruptible, args=(user_input,)
-                    )
-                    audio_thread.start()
-
-            except sr.WaitTimeoutError:
-                continue
-            except sr.UnknownValueError:
-                continue
+                user_input = input("You: ").strip()
+                if not user_input:
+                    continue
+                audio_thread = threading.Thread(target=speak_text_interruptible, args=(user_input, "en"))
+                audio_thread.start()
             except KeyboardInterrupt:
-                listening = False
                 break
+    else:
+        with sr.Microphone() as source:
+            recognizer.adjust_for_ambient_noise(source)
+            print("🎙 Listening (Google STT, auto Hindi/English/Spanish)...")
+            while True:
+                try:
+                    if time.time() < mute_until:
+                        time.sleep(0.1)
+                        continue
 
+                    audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)
+                    try:
+                        user_input = recognizer.recognize_google(audio)
+                    except sr.UnknownValueError:
+                        continue
+                    except sr.RequestError as e:
+                        print("[STT] Google STT request failed:", e)
+                        continue
 
-# --- Optional IP Geolocation callback (debug info) ---
+                    detected_lang = "en"
+                    if _gtrans and user_input:
+                        try:
+                            det = _gtrans.detect(user_input)
+                            detected_lang = det.lang or "en"
+                        except Exception:
+                            pass
+
+                    print(f"📝 You said ({detected_lang}): {user_input}")
+                    if not audio_lock.locked():
+                        audio_thread = threading.Thread(
+                            target=speak_text_interruptible,
+                            args=(user_input, detected_lang),
+                        )
+                        audio_thread.start()
+
+                except sr.WaitTimeoutError:
+                    continue
+                except KeyboardInterrupt:
+                    break
+
+# --- IP callback ---
 def ip_callback(info):
     geo = info.get("geolocation", {})
-    country = geo.get("country")
     org = geo.get("org") or geo.get("isp") or ""
     if "Vultr" in org or "Vultr" in geo.get("as", ""):
         print("Detected Vultr cloud — consider low-latency region routing.")
 
-
-# --- Main entry (local testing) ---
 if __name__ == "__main__":
     try:
         start_ip_check(callback=ip_callback)
         listen_loop()
     finally:
+        if audio_thread and audio_thread.is_alive():
+            audio_thread.join()
         clear_session()

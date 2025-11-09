@@ -5,6 +5,16 @@ interface HeroSectionProps {
 }
 
 export default function HeroSection({ onCallClick }: HeroSectionProps) {
+  // --- Wrapper to call backend before showing CallInterface ---
+  const handleCallClick = async () => {
+    try {
+      await fetch("http://127.0.0.1:5001/start_listening", { method: "POST" });
+    } catch (err) {
+      console.error("Failed to start listening:", err);
+    }
+    onCallClick(); // existing logic to show CallInterface
+  };
+
   return (
     <section
       id="home"
@@ -33,7 +43,7 @@ export default function HeroSection({ onCallClick }: HeroSectionProps) {
 
         {/* TALK button */}
         <button
-          onClick={onCallClick}
+          onClick={handleCallClick}
           className="group relative mt-12 mx-auto flex items-center justify-between gap-6
                      px-12 py-5 rounded-full text-xl font-semibold tracking-wide
                      text-white border border-[#6C4BFF] 
