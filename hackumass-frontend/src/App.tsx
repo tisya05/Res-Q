@@ -2,7 +2,7 @@ import { useState } from "react";
 import Header from "./components/Header";
 import HeroSection from "./components/HeroSection";
 import LocationConsentModal from "./components/LocationConsentModal";
-import CallInterface from "./components/CallInterface";
+import CallInterface from "./components/CallInterfaceClean";
 import UpdatesSection from "./components/UpdatesSection";
 import AboutSection from "./components/AboutSection";
 

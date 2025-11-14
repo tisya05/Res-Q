@@ -127,6 +127,21 @@ def speak_text_interruptible(prompt, detected_lang="en"):
         text = process_user_message(prompt, detected_lang)
         text = enforce_safety_response(text)
 
+        # Notify any optional Flask callback so the web UI can pick up the
+        # assistant's reply via polling or saved state. This allows the
+        # frontend AI response box to show Gemini replies.
+        try:
+            if not text:
+                text = "I heard you — please tell me more about what's happening." \
+                       " If this is an emergency, call local emergency services immediately."
+            if ai_callback:
+                try:
+                    ai_callback(text)
+                except Exception as _e:
+                    print("[mock_main] ai_callback failed:", _e)
+        except NameError:
+            pass
+
         chunks = re.split(r"(?<=[.?!])\s+", text)
         for i, chunk in enumerate(chunks):
             if not chunk.strip():

@@ -8,7 +8,20 @@ export default function HeroSection({ onCallClick }: HeroSectionProps) {
   // --- Wrapper to call backend before showing CallInterface ---
   const handleCallClick = async () => {
     try {
-      await fetch("http://127.0.0.1:5001/start_listening", { method: "POST" });
+  const res = await fetch("http://127.0.0.1:5002/start_listening", { method: "POST" });
+      try {
+        const data = await res.json();
+        if (data && data.ip_info) {
+          // store initial ip info for CallInterface to use immediately
+          try {
+            sessionStorage.setItem("initial_ip_info", JSON.stringify(data.ip_info));
+          } catch {
+            // ignore storage errors
+          }
+        }
+      } catch {
+        // ignore json parse errors
+      }
     } catch (err) {
       console.error("Failed to start listening:", err);
     }
