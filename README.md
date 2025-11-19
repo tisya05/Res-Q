@@ -1,91 +1,30 @@
-# HackUMass-XIII-Voice-Hack
+# Project RES-Q
 
-## To Do
-* Add IP detection support
-* Web scraping integration 
-* Wesite (frontend + backend)
+Emergencies don’t wait for translation.
 
-# 🎤 Gemini Voice Base Stack
+RES-Q is a multilingual, voice-driven AI assistant designed to break language and accessibility barriers in emergency response. Built on top of the Gemini Voice Base Stack, it enables natural, real-time conversations between users and rescue systems in any language, using only your voice.
 
-A base voice interface stack combining **Google Gemini** and **ElevenLabs** for real-time conversational AI.
+With AI reasoning, speech recognition, and lifelike voice synthesis, RES-Q helps users:
 
-This stack lets you talk naturally with Gemini, using your microphone for input and ElevenLabs for smooth, natural voice replies — all handled locally through Python.
+- Ask for help or describe a situation naturally
 
----
+- Get real-time updates from trusted sources (e.g., weather alerts, nearby hospitals)
 
-## ⚙️ Setup Guide
+- Auto-detect their location via IP geolocation
 
-### 1. Create and activate the virtual environment
+- Interact hands-free, even in high-stress situations
 
-```bash
-conda create -n hackumass python=3.10
-conda activate hackumass
-```
+## Tech Stack:
 
-### 2. Install required libraries
+🧠 Google Gemini API — natural reasoning and conversation
 
-```bash
-conda install -c conda-forge pyaudio portaudio
-pip install speechrecognition google-generativeai requests pydub simpleaudio
-pip install playsound==1.3.0
-pip install python-dotenv
-pip install elevenlabs
-pip install pyobjc
-```
+🗣️ SpeechRecognition + PyAudio — real-time voice input
 
----
+🔊 ElevenLabs API — natural, interruptible voice responses
 
-## 🔑 Environment Setup
+🌐 IP-based geolocation + web scraping — contextual info retrieval
 
-Create a `.env` file in your project root and add your API keys:
+⚙️ Python backend + React.js frontend
 
-```env
-GEMINI_API_KEY=your_gemini_key_here
-ELEVEN_API_KEY=your_elevenlabs_key_here
-```
-
----
-
-## 🚀 Run the Project
-
-```bash
-python base-stack.py
-```
-
-Once running:
-
-* 🎙️ Speak into your microphone  
-* ⏸️ The system automatically detects when you stop speaking  
-* 🤖 Gemini generates a text response  
-* 🔊 The reply is spoken aloud using ElevenLabs  
-* 🔁 If you start speaking again, playback pauses automatically  
-
----
-
-## 🧩 Current Features
-
-| Feature | Status | Description |
-|----------|---------|-------------|
-| 🎧 Continuous Mic Listening | ✅ | Listens for speech without pressing a button |
-| 🕒 Auto Pause Detection | ✅ | Detects silence to trigger Gemini |
-| 🧠 Gemini Integration | ✅ | Uses Google Gemini for generating responses |
-| 🔈 ElevenLabs TTS | ✅ | Converts Gemini output to natural speech |
-| ⏹️ Interruptible Playback | ✅ | Automatically pauses when user starts talking |
-| 🧹 Temp File Cleanup | ✅ | Removes temporary audio files after playback |
-
----
-
-## 🧱 Project Structure
-
-```
-gemini-voice-base/
-│
-├── base-stack.py         # Main voice interaction script
-├── .env                  # Environment variables (not committed)
-├── requirements.txt      # Optional dependency file
-└── README.md             # This documentation
-```
-
----
-
+Built for: accessibility, inclusivity, and human-centered AI assistance — because every second counts.
 
